@@ -1,0 +1,6 @@
+cedula;nombre;apellido1;apellido2;nivel;seccion;cedula_padre;accion
+1234567888;Luiz;González;Martínez;Primaria;4-2;11223344;insertar
+8765432199;Sofía;Ramírez;López;Secundaria;2-1;55667788;eliminar
+1122334455;Mateo;Fernández;Gómez;Primaria;3-3;12345678;update
+5566778899;Valentina;Sánchez;Rodríguez;Secundaria;1-2;87654321;insertar
+
