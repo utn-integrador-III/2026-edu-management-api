@@ -1,0 +1,5 @@
+cedula;nombre;apellido1;apellido2;correo;telefono;tipo_usuario;accion
+12345678;Juan;Pérez;García;juan.perez@gmx.com;1234567890;docente;insertar
+87654321;María;López;Sánchez;maria.lopez@sanchez.com;0987654321;padre;eliminar
+11223344;Carlos;Gómez;Martínez;carlos.gomez@martinez.com;1122334455;abuelo;update
+55667788;Ana;Rodríguez;Fernández;ana.rodriguez@fernandez.com;5566778890;madre;insertar
