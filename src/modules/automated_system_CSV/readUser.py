@@ -4,9 +4,15 @@
 
 import csv
 import logging
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
+
+# Permite importar src.* cuando el archivo se ejecuta como script standalone
+_root = str(Path(__file__).resolve().parents[3])
+if _root not in sys.path:
+    sys.path.insert(0, _root)
 
 DEFAULT_CSV = Path(__file__).parent / "src" / "csv" / "users.csv"
 
@@ -118,31 +124,77 @@ class UserCSVProcessor:
     def insert_records(self) -> int:
         if not self.groups["docente"] and not self.groups["padres"]:
             self.group_by_action()
+        from src.modules.users.users_service import create as svc_create
         count = 0
         for tipo in ["docente", "padres"]:
+            role = "teacher" if tipo == "docente" else "parent"
             for entry in self.groups.get(tipo, {}).get("insertar", []):
-                logging.info(f"Preparando insertar: {entry.cedula} - {entry.nombre} {entry.apellido1}")
-                count += 1
+                try:
+                    svc_create({
+                        'id_number':  entry.cedula,
+                        'first_name': entry.nombre,
+                        'last_name':  f"{entry.apellido1} {entry.apellido2}".strip(),
+                        'email':      entry.correo or None,
+                        'phone':      entry.telefono or None,
+                        'role':       role,
+                    })
+                    logging.info(f"Insertado: {entry.cedula} ({tipo})")
+                    count += 1
+                except Exception as e:
+                    if 'unique' in str(e).lower():
+                        logging.warning(f"Ya existe {entry.cedula}, saltando")
+                    else:
+                        logging.error(f"Error insertando {entry.cedula}: {e}")
         return count
 
     def update_records(self) -> int:
         if not self.groups["docente"] and not self.groups["padres"]:
             self.group_by_action()
+        from src.modules.users.users_service import update as svc_update
+        from src.config.database import execute_one
         count = 0
         for tipo in ["docente", "padres"]:
+            role = "teacher" if tipo == "docente" else "parent"
             for entry in self.groups.get(tipo, {}).get("update", []):
-                logging.info(f"Preparando update: {entry.cedula} - {entry.nombre} {entry.apellido1}")
-                count += 1
+                try:
+                    found = execute_one('SELECT id FROM users WHERE id_number = %s', (entry.cedula,))
+                    if not found:
+                        logging.warning(f"No encontrado para actualizar: {entry.cedula}")
+                        continue
+                    svc_update(found['id'], {
+                        'first_name': entry.nombre,
+                        'last_name':  f"{entry.apellido1} {entry.apellido2}".strip(),
+                        'email':      entry.correo or None,
+                        'phone':      entry.telefono or None,
+                        'role':       role,
+                        'type':       None,
+                        'group_id':   None,
+                        'active':     True,
+                    })
+                    logging.info(f"Actualizado: {entry.cedula} ({tipo})")
+                    count += 1
+                except Exception as e:
+                    logging.error(f"Error actualizando {entry.cedula}: {e}")
         return count
 
     def delete_records(self) -> int:
         if not self.groups["docente"] and not self.groups["padres"]:
             self.group_by_action()
+        from src.modules.users.users_service import deactivate as svc_deactivate
+        from src.config.database import execute_one
         count = 0
         for tipo in ["docente", "padres"]:
             for entry in self.groups.get(tipo, {}).get("eliminar", []):
-                logging.info(f"Preparando eliminar: {entry.cedula} - {entry.nombre} {entry.apellido1}")
-                count += 1
+                try:
+                    found = execute_one('SELECT id FROM users WHERE id_number = %s', (entry.cedula,))
+                    if not found:
+                        logging.warning(f"No encontrado para eliminar: {entry.cedula}")
+                        continue
+                    svc_deactivate(found['id'])
+                    logging.info(f"Eliminado (desactivado): {entry.cedula} ({tipo})")
+                    count += 1
+                except Exception as e:
+                    logging.error(f"Error eliminando {entry.cedula}: {e}")
         return count
 
     def print_summary(self, groups: Dict[str, Dict[str, List[UserEntry]]]) -> None:
