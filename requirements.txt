@@ -5,3 +5,7 @@ passlib[bcrypt]
 python-jose[cryptography]
 python-dotenv
 python-multipart
+pymongo
+dnspython
+motor
+bcrypt==3.2.2
