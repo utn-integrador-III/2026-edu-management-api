@@ -8,13 +8,14 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
+from bson import ObjectId
 
 # Permite importar src.* cuando el archivo se ejecuta como script standalone
 _root = str(Path(__file__).resolve().parents[3])
 if _root not in sys.path:
     sys.path.insert(0, _root)
 
-DEFAULT_CSV = Path(__file__).parent / "src" / "csv" / "students.csv"
+DEFAULT_CSV = Path(__file__).parent / "Example_CSV" / "students.csv"
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -108,39 +109,34 @@ class StudentCSVProcessor:
         if not self.entries:
             self.group_by_action()
         from src.modules.users.users_service import create as svc_create
-        from src.config.database import execute_one, execute
+        from src.config.database import db
         count = 0
         for entry in self.groups["insertar"]:
             try:
+                if not entry.cedula_padre:
+                    logging.error(f"Error insertando {entry.cedula}: El estudiante debe tener un padre asociado.")
+                    continue
+                parent = db.users.find_one({'id_number': entry.cedula_padre, 'role': 'parent', 'active': True})
+                if not parent:
+                    logging.error(f"Error insertando {entry.cedula}: El padre con cédula {entry.cedula_padre} no está registrado en el sistema.")
+                    continue
+
                 group_id = None
                 if entry.nivel and entry.seccion:
-                    row = execute_one(
-                        'SELECT id FROM groups WHERE level = %s AND name = %s',
-                        (entry.nivel, entry.seccion)
-                    )
-                    group_id = row['id'] if row else None
+                    row = db.groups.find_one({"level": entry.nivel, "name": entry.seccion})
+                    group_id = str(row['_id']) if row else None
                 student = svc_create({
                     'id_number':  entry.cedula,
                     'first_name': entry.nombre,
                     'last_name':  f"{entry.apellido1} {entry.apellido2}".strip(),
                     'role':       'student',
                     'group_id':   group_id,
+                    'parent_id':  str(parent['_id']),
                 })
                 logging.info(f"Insertado estudiante: {entry.cedula}")
                 count += 1
-                if entry.cedula_padre:
-                    parent = execute_one(
-                        'SELECT id FROM users WHERE id_number = %s AND role = %s AND active = true',
-                        (entry.cedula_padre, 'parent')
-                    )
-                    if parent:
-                        execute(
-                            'INSERT INTO parent_students (parent_id, student_id) VALUES (%s, %s) ON CONFLICT DO NOTHING',
-                            (parent['id'], student['id'])
-                        )
-                        logging.info(f"Vinculado a encargado {entry.cedula_padre}")
             except Exception as e:
-                if 'unique' in str(e).lower():
+                if 'unique' in str(e).lower() or 'already exists' in str(e).lower():
                     logging.warning(f"Ya existe {entry.cedula}, saltando")
                 else:
                     logging.error(f"Error insertando {entry.cedula}: {e}")
@@ -150,22 +146,19 @@ class StudentCSVProcessor:
         if not self.entries:
             self.group_by_action()
         from src.modules.users.users_service import update as svc_update
-        from src.config.database import execute_one
+        from src.config.database import db
         count = 0
         for entry in self.groups["update"]:
             try:
-                found = execute_one('SELECT id FROM users WHERE id_number = %s', (entry.cedula,))
+                found = db.users.find_one({'id_number': entry.cedula})
                 if not found:
                     logging.warning(f"No encontrado para actualizar: {entry.cedula}")
                     continue
                 group_id = None
                 if entry.nivel and entry.seccion:
-                    row = execute_one(
-                        'SELECT id FROM groups WHERE level = %s AND name = %s',
-                        (entry.nivel, entry.seccion)
-                    )
-                    group_id = row['id'] if row else None
-                svc_update(found['id'], {
+                    row = db.groups.find_one({"level": entry.nivel, "name": entry.seccion})
+                    group_id = str(row['_id']) if row else None
+                svc_update(str(found['_id']), {
                     'first_name': entry.nombre,
                     'last_name':  f"{entry.apellido1} {entry.apellido2}".strip(),
                     'email':      None,
@@ -185,15 +178,15 @@ class StudentCSVProcessor:
         if not self.entries:
             self.group_by_action()
         from src.modules.users.users_service import deactivate as svc_deactivate
-        from src.config.database import execute_one
+        from src.config.database import db
         count = 0
         for entry in self.groups["eliminar"]:
             try:
-                found = execute_one('SELECT id FROM users WHERE id_number = %s', (entry.cedula,))
+                found = db.users.find_one({'id_number': entry.cedula})
                 if not found:
                     logging.warning(f"No encontrado para eliminar: {entry.cedula}")
                     continue
-                svc_deactivate(found['id'])
+                svc_deactivate(str(found['_id']))
                 logging.info(f"Eliminado (desactivado) estudiante: {entry.cedula}")
                 count += 1
             except Exception as e:

@@ -1,4 +1,4 @@
-﻿# Lector y separador de CSV de usuarios (sin modificar ninguna BD)
+# Lector y separador de CSV de usuarios (sin modificar ninguna BD)
 # Formato esperado (separador `;`):
 # cedula;nombre;apellido1;apellido2;correo;telefono;tipo_usuario;accion
 
@@ -14,7 +14,7 @@ _root = str(Path(__file__).resolve().parents[3])
 if _root not in sys.path:
     sys.path.insert(0, _root)
 
-DEFAULT_CSV = Path(__file__).parent / "src" / "csv" / "users.csv"
+DEFAULT_CSV = Path(__file__).parent / "Example_CSV" / "users.csv"
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -141,7 +141,7 @@ class UserCSVProcessor:
                     logging.info(f"Insertado: {entry.cedula} ({tipo})")
                     count += 1
                 except Exception as e:
-                    if 'unique' in str(e).lower():
+                    if 'unique' in str(e).lower() or 'already exists' in str(e).lower():
                         logging.warning(f"Ya existe {entry.cedula}, saltando")
                     else:
                         logging.error(f"Error insertando {entry.cedula}: {e}")
@@ -151,17 +151,17 @@ class UserCSVProcessor:
         if not self.groups["docente"] and not self.groups["padres"]:
             self.group_by_action()
         from src.modules.users.users_service import update as svc_update
-        from src.config.database import execute_one
+        from src.config.database import db
         count = 0
         for tipo in ["docente", "padres"]:
             role = "teacher" if tipo == "docente" else "parent"
             for entry in self.groups.get(tipo, {}).get("update", []):
                 try:
-                    found = execute_one('SELECT id FROM users WHERE id_number = %s', (entry.cedula,))
+                    found = db.users.find_one({'id_number': entry.cedula})
                     if not found:
                         logging.warning(f"No encontrado para actualizar: {entry.cedula}")
                         continue
-                    svc_update(found['id'], {
+                    svc_update(str(found['_id']), {
                         'first_name': entry.nombre,
                         'last_name':  f"{entry.apellido1} {entry.apellido2}".strip(),
                         'email':      entry.correo or None,
@@ -181,16 +181,16 @@ class UserCSVProcessor:
         if not self.groups["docente"] and not self.groups["padres"]:
             self.group_by_action()
         from src.modules.users.users_service import deactivate as svc_deactivate
-        from src.config.database import execute_one
+        from src.config.database import db
         count = 0
         for tipo in ["docente", "padres"]:
             for entry in self.groups.get(tipo, {}).get("eliminar", []):
                 try:
-                    found = execute_one('SELECT id FROM users WHERE id_number = %s', (entry.cedula,))
+                    found = db.users.find_one({'id_number': entry.cedula})
                     if not found:
                         logging.warning(f"No encontrado para eliminar: {entry.cedula}")
                         continue
-                    svc_deactivate(found['id'])
+                    svc_deactivate(str(found['_id']))
                     logging.info(f"Eliminado (desactivado): {entry.cedula} ({tipo})")
                     count += 1
                 except Exception as e:

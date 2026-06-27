@@ -13,7 +13,7 @@ class ChangePasswordRequest(BaseModel):
     currentPassword: str
     newPassword: str
 
-class ForgotPasswordRequest(BaseModel):
+class RecoverPasswordRequest(BaseModel):
     id_number: str
 
 class ResetPasswordRequest(BaseModel):
@@ -29,7 +29,7 @@ def login(body: LoginRequest):
         raise HTTPException(status_code=401, detail=str(e))
 
 # RF-02
-@router.post('/change-password')
+@router.put('/change-password')
 def change_password(body: ChangePasswordRequest, user: dict = Depends(verify_token)):
     if not body.newPassword or len(body.newPassword) < 8:
         raise HTTPException(status_code=400, detail='New password must be at least 8 characters')
@@ -40,8 +40,8 @@ def change_password(body: ChangePasswordRequest, user: dict = Depends(verify_tok
         raise HTTPException(status_code=400, detail=str(e))
 
 # RF-03
-@router.post('/forgot-password')
-def forgot_password(body: ForgotPasswordRequest):
+@router.post('/recover-password')
+def recover_password(body: RecoverPasswordRequest):
     auth_service.forgot_password(body.id_number)
     return {'message': 'If an account exists with that ID number, a recovery email will be sent'}
 

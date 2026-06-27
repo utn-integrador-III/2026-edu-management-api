@@ -3,72 +3,79 @@ import secrets
 from datetime import datetime, timedelta
 from passlib.context import CryptContext
 from jose import jwt
-from src.config.database import execute, execute_one
+from bson import ObjectId
+from src.config.database import db
 from src.config.mailer import send_mail
 
 pwd_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
 
 # RF-01
 def login(id_number: str, password: str) -> dict:
-    user = execute_one(
-        'SELECT * FROM users WHERE id_number = %s AND active = true',
-        (id_number,)
-    )
-    if not user or user['role'] == 'student':
+    user = db.users.find_one({"id_number": id_number, "active": True})
+    
+    if not user or user.get('role') == 'student':
         raise ValueError('Invalid credentials')
     if not pwd_context.verify(password, user['password_hash']):
         raise ValueError('Invalid credentials')
 
     token = jwt.encode(
         {
-            'id':                user['id'],
-            'role':              user['role'],
-            'first_name':        user['first_name'],
+            'id':                 str(user['_id']),
+            'role':               user['role'],
+            'first_name':         user['first_name'],
             'mustChangePassword': user['must_change_password'],
-            'exp':               datetime.utcnow() + timedelta(hours=24),
+            'exp':                datetime.utcnow() + timedelta(hours=24),
         },
         os.getenv('JWT_SECRET'),
         algorithm='HS256',
     )
     return {
-        'token':             token,
+        'token':              token,
         'mustChangePassword': user['must_change_password'],
-        'role':              user['role'],
-        'first_name':        user['first_name'],
-        'last_name':         user['last_name'],
+        'role':               user['role'],
+        'first_name':         user['first_name'],
+        'last_name':          user['last_name'],
     }
 
 # RF-02
-def change_password(user_id: int, current_password: str, new_password: str):
-    user = execute_one('SELECT * FROM users WHERE id = %s', (user_id,))
+def change_password(user_id: str, current_password: str, new_password: str):
+    try:
+        obj_id = ObjectId(user_id)
+    except Exception:
+        raise ValueError('Invalid user ID format')
+        
+    user = db.users.find_one({"_id": obj_id})
     if not user:
         raise ValueError('User not found')
     if not pwd_context.verify(current_password, user['password_hash']):
         raise ValueError('Current password is incorrect')
+        
     new_hash = pwd_context.hash(new_password)
-    execute(
-        'UPDATE users SET password_hash = %s, must_change_password = false WHERE id = %s',
-        (new_hash, user_id)
+    db.users.update_one(
+        {"_id": obj_id},
+        {"$set": {"password_hash": new_hash, "must_change_password": False}}
     )
 
 # RF-03: enviar link de recuperación
 def forgot_password(id_number: str):
-    user = execute_one(
-        'SELECT id, email, first_name, last_name FROM users WHERE id_number = %s AND active = true',
-        (id_number,)
-    )
+    user = db.users.find_one({"id_number": id_number, "active": True})
     if not user or not user.get('email'):
         return
 
-    execute(
-        'UPDATE password_reset_tokens SET used = true WHERE user_id = %s AND used = false',
-        (user['id'],)
+    # Invalidate previous tokens
+    db.password_reset_tokens.update_many(
+        {"user_id": user['_id'], "used": False},
+        {"$set": {"used": True}}
     )
+    
     token = secrets.token_hex(32)
-    execute(
-        "INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES (%s, %s, NOW() + INTERVAL '1 hour')",
-        (user['id'], token)
-    )
+    db.password_reset_tokens.insert_one({
+        "user_id": user['_id'],
+        "token": token,
+        "expires_at": datetime.utcnow() + timedelta(hours=1),
+        "used": False,
+        "created_at": datetime.utcnow()
+    })
 
     frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:5173')
     reset_url = f"{frontend_url}/reset-password?token={token}"
@@ -90,22 +97,37 @@ def forgot_password(id_number: str):
 
 # RF-03: aplicar nueva contraseña
 def reset_password(token: str, new_password: str):
-    record = execute_one(
-        'SELECT id, user_id FROM password_reset_tokens WHERE token = %s AND used = false AND expires_at > NOW()',
-        (token,)
-    )
+    record = db.password_reset_tokens.find_one({
+        "token": token,
+        "used": False,
+        "expires_at": {"$gt": datetime.utcnow()}
+    })
     if not record:
         raise ValueError('Invalid or expired token')
+        
     new_hash = pwd_context.hash(new_password)
-    execute(
-        'UPDATE users SET password_hash = %s, must_change_password = false WHERE id = %s',
-        (new_hash, record['user_id'])
+    db.users.update_one(
+        {"_id": ObjectId(record['user_id'])},
+        {"$set": {"password_hash": new_hash, "must_change_password": False}}
     )
-    execute('UPDATE password_reset_tokens SET used = true WHERE id = %s', (record['id'],))
+    db.password_reset_tokens.update_one(
+        {"_id": record['_id']},
+        {"$set": {"used": True}}
+    )
 
 # RF-04
-def logout(user_id: int, token: str):
-    execute(
-        'INSERT INTO token_blacklist (token, user_id) VALUES (%s, %s) ON CONFLICT (token) DO NOTHING',
-        (token, user_id)
+def logout(user_id: str, token: str):
+    try:
+        obj_id = ObjectId(user_id) if user_id else None
+    except Exception:
+        obj_id = None
+        
+    db.token_blacklist.update_one(
+        {"token": token},
+        {"$setOnInsert": {
+            "token": token,
+            "user_id": obj_id,
+            "created_at": datetime.utcnow()
+        }},
+        upsert=True
     )
