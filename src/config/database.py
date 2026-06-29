@@ -40,17 +40,32 @@ except Exception as e:
 # Database Seeding Routine
 def seed_db():
     try:
-        # Seed default groups
-        required_groups = [
-            {"name": "7-A", "level": "Septimo"},
-            {"name": "7-B", "level": "Septimo"},
-            {"name": "8-A", "level": "Octavo"},
-            {"name": "9-A", "level": "Noveno"},
-            {"name": "4-2", "level": "Primaria"},
-            {"name": "2-1", "level": "Secundaria"},
-            {"name": "3-3", "level": "Primaria"},
-            {"name": "1-2", "level": "Secundaria"},
-        ]
+        # Clean up old incorrect seed groups from previous versions
+        db.groups.delete_many({"name": {"$in": ["1-2", "2-1"]}, "level": "Secundaria"})
+
+        # Generate required Costa Rican groups
+        required_groups = []
+        
+        # Primaria: 1-1 to 6-6
+        for grade in range(1, 7):
+            for sec in range(1, 7):
+                required_groups.append({"name": f"{grade}-{sec}", "level": "Primaria"})
+        
+        # Secundaria: 7-A to 12-F
+        sec_levels = {
+            7: "Septimo",
+            8: "Octavo",
+            9: "Noveno",
+            10: "Decimo",
+            11: "Undecimo",
+            12: "Duodecimo"
+        }
+        for grade in range(7, 13):
+            level_name = sec_levels[grade]
+            for char_code in range(ord('A'), ord('G')): # A to F
+                sec_letter = chr(char_code)
+                required_groups.append({"name": f"{grade}-{sec_letter}", "level": level_name})
+
         seeded_count = 0
         for g in required_groups:
             res = db.groups.update_one(

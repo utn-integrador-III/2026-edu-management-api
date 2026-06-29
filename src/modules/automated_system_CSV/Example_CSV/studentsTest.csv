@@ -1,0 +1,9 @@
+cedula;nombre;apellido1;apellido2;nivel;seccion;cedula_padre;accion
+112233445;Daniel;Saborio;Lopez;Primaria;3-1;601110222;insertar
+112233446;Valeria;Saborio;Lopez;Primaria;5-2;601110222;insertar
+112233447;Alejandro;Soto;Quesada;Secundaria;7-1;702220333;insertar
+112233448;Natalia;Soto;Quesada;Primaria;2-3;702220333;insertar
+112233449;Gabriel;Monge;Cordero;Secundaria;10-2;803330444;insertar
+112233450;Valentina;Monge;Cordero;Primaria;6-1;803330444;insertar
+112233451;Ignacio;Marin;Esquivel;Secundaria;8-4;904440555;insertar
+112233452;Camila;Delgado;Mora;Primaria;1-1;105550666;insertar

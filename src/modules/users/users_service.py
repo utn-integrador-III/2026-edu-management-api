@@ -400,7 +400,32 @@ def import_students_from_csv(file_content: bytes) -> dict:
     def resolve_group(nivel, seccion):
         if not nivel or not seccion:
             return None
-        row = db.groups.find_one({"level": nivel, "name": seccion})
+        # Normalize inputs for robust matching (case-insensitive and common accent maps)
+        nivel_clean = nivel.strip().lower()
+        seccion_clean = seccion.strip().upper()
+        
+        nivel_map = {
+            "septimo": "Septimo",
+            "sétimo": "Septimo",
+            "séptimo": "Septimo",
+            "octavo": "Octavo",
+            "noveno": "Noveno",
+            "decimo": "Decimo",
+            "décimo": "Decimo",
+            "undecimo": "Undecimo",
+            "undécimo": "Undecimo",
+            "duodecimo": "Duodecimo",
+            "duodécimo": "Duodecimo",
+            "primaria": "Primaria",
+            "secundaria": "Secundaria"
+        }
+        
+        nivel_normalized = nivel_map.get(nivel_clean, nivel.strip())
+        
+        row = db.groups.find_one({
+            "level": {"$regex": f"^{nivel_normalized}$", "$options": "i"},
+            "name": {"$regex": f"^{seccion_clean}$", "$options": "i"}
+        })
         return str(row['_id']) if row else None
 
     for row in reader:
