@@ -1,0 +1,11 @@
+cedula;nombre;apellido1;apellido2;correo;telefono;tipo_usuario;accion
+102340567;Maria;Jimenez;Castro;maria.jimenez@correo.com;87654321;docente;insertar
+208760543;Carlos;Mora;Solano;carlos.mora@correo.com;83456789;docente;insertar
+304560789;Lucia;Chaves;Vargas;lucia.chaves@correo.com;88123456;docente;insertar
+401230456;Jorge;Brenes;Alfaro;jorge.brenes@correo.com;85678901;docente;insertar
+509870654;Elena;Rojas;Gomez;elena.rojas@correo.com;89012345;docente;insertar
+601110222;Luis;Saborio;Madrigal;luis.saborio@correo.com;84561234;padre;insertar
+702220333;Laura;Quesada;Arias;laura.quesada@correo.com;87894561;madre;insertar
+803330444;Pedro;Monge;Segura;pedro.monge@correo.com;86123478;padre;insertar
+904440555;Sofia;Esquivel;Herrera;sofia.esquivel@correo.com;89123456;madre;insertar
+105550666;Andres;Delgado;Marin;andres.delgado@correo.com;88234567;padre;insertar
