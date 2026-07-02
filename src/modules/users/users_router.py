@@ -87,7 +87,7 @@ async def import_students_csv(file: UploadFile = File(...)):
 def search_users(q: str = Query(...)):
     return users_service.search_users(q)
 
-@router.get('/', dependencies=[Depends(require_role('admin'))])
+@router.get('/', dependencies=[Depends(require_role('admin', 'teacher'))])
 def get_all(role: Optional[str] = Query(None), active: Optional[bool] = Query(None)):
     return users_service.get_all({'role': role, 'active': active})
 
@@ -123,7 +123,7 @@ def deactivate_user(user_id: str):
         raise HTTPException(status_code=400, detail=str(e))
 
 # RF-06: Materias de estudiante
-@router.get('/{student_id}/subjects', dependencies=[Depends(require_role('admin', 'teacher'))])
+@router.get('/{student_id}/subjects', dependencies=[Depends(require_role('admin', 'teacher', 'parent'))])
 def get_student_subjects(student_id: str, period: Optional[str] = Query(None)):
     return users_service.get_student_subjects(student_id, period)
 
