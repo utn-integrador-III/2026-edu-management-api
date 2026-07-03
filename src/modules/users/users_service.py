@@ -216,6 +216,18 @@ def get_groups() -> list:
     groups = list(db.groups.find().sort([('name', 1)]))
     return serialize_list(groups)
 
+def get_teacher_groups(teacher_id: str) -> list:
+    try:
+        t_id = ObjectId(teacher_id)
+    except Exception:
+        return []
+    # Buscar grupos a los que pertenece el profesor en student_subjects
+    links = list(db.student_subjects.find({"teacher_id": t_id}))
+    group_ids = list(set(link["group_id"] for link in links if link.get("group_id")))
+    
+    groups = list(db.groups.find({"_id": {"$in": group_ids}}).sort([('name', 1)]))
+    return serialize_list(groups)
+
 # Hijos del padre
 def get_children(parent_id: str) -> list:
     try:
@@ -558,3 +570,50 @@ def link_parent_student(parent_ref: str, student_ref: str) -> dict:
 
 def get_parent_children(parent_id: str) -> list:
     return get_children(parent_id)
+
+def get_group_details(group_id: str) -> dict:
+    try:
+        g_id = ObjectId(group_id)
+    except Exception:
+        return {"students": [], "teachers": []}
+        
+    group = db.groups.find_one({"_id": g_id})
+    if not group:
+        return {"students": [], "teachers": []}
+        
+    students = list(db.users.find({"group_id": g_id, "role": "student", "active": True}).sort([('last_name', 1), ('first_name', 1)]))
+    serialized_students = serialize_list(students)
+    
+    assignments = list(db.student_subjects.find({"group_id": g_id}))
+    
+    teachers_map = {}
+    for assign in assignments:
+        t_id = assign.get("teacher_id")
+        sub_id = assign.get("subject_id")
+        if not t_id or not sub_id:
+            continue
+            
+        t_str = str(t_id)
+        
+        if t_str not in teachers_map:
+            teacher = db.users.find_one({"_id": t_id})
+            if teacher:
+                teachers_map[t_str] = {
+                    "id": t_str,
+                    "first_name": teacher["first_name"],
+                    "last_name": teacher["last_name"],
+                    "email": teacher.get("email"),
+                    "phone": teacher.get("phone"),
+                    "subjects": []
+                }
+        
+        if t_str in teachers_map:
+            subject = db.subjects.find_one({"_id": sub_id})
+            if subject and subject["name"] not in teachers_map[t_str]["subjects"]:
+                teachers_map[t_str]["subjects"].append(subject["name"])
+                
+    return {
+        "group": serialize_doc(group),
+        "students": serialized_students,
+        "teachers": list(teachers_map.values())
+    }
