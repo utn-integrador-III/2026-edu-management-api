@@ -1,0 +1,5 @@
+cedula;nombre;apellido1;apellido2;nivel;seccion;cedula_padre;accion
+111111111;Cristian;Alvarado;Salas;Primaria;4-2;604420243;insertar
+222222222;Paula;Alvarado;Salas;Primaria;4-2;604420243;insertar
+333333333;Mateo;Rodriguez;Castro;Secundaria;1-2;999999999;insertar
+444444444;Sofia;Perez;Garcia;Secundaria;2-1;12345678;insertar
