@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+psycopg2-binary
+passlib[bcrypt]
+python-jose[cryptography]
+python-dotenv
+python-multipart
+pymongo
+dnspython
+motor
+bcrypt==3.2.2
