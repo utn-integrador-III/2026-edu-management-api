@@ -62,8 +62,10 @@ def create_subject(body: SubjectCreate):
         raise HTTPException(status_code=400, detail=str(e))
 
 # Grupos
-@router.get('/groups', dependencies=[Depends(require_role('admin', 'teacher'))])
-def get_groups():
+@router.get('/groups')
+def get_groups(current_user: dict = Depends(require_role('admin', 'teacher'))):
+    if current_user['role'] == 'teacher':
+        return users_service.get_teacher_groups(current_user['id'])
     return users_service.get_groups()
 
 # Hijos del padre autenticado
@@ -87,7 +89,7 @@ async def import_students_csv(file: UploadFile = File(...)):
 def search_users(q: str = Query(...)):
     return users_service.search_users(q)
 
-@router.get('/', dependencies=[Depends(require_role('admin'))])
+@router.get('/', dependencies=[Depends(require_role('admin', 'teacher'))])
 def get_all(role: Optional[str] = Query(None), active: Optional[bool] = Query(None)):
     return users_service.get_all({'role': role, 'active': active})
 
@@ -123,8 +125,17 @@ def deactivate_user(user_id: str):
         raise HTTPException(status_code=400, detail=str(e))
 
 # RF-06: Materias de estudiante
-@router.get('/{student_id}/subjects', dependencies=[Depends(require_role('admin', 'teacher'))])
-def get_student_subjects(student_id: str, period: Optional[str] = Query(None)):
+@router.get('/{student_id}/subjects')
+def get_student_subjects(
+    student_id: str,
+    period: Optional[str] = Query(None),
+    current_user: dict = Depends(require_role('admin', 'teacher', 'parent'))
+):
+    if current_user['role'] == 'parent':
+        children = users_service.get_children(current_user['id'])
+        child_ids = [c['id'] for c in children]
+        if student_id not in child_ids:
+            raise HTTPException(status_code=403, detail="Unauthorized to view this student's subjects")
     return users_service.get_student_subjects(student_id, period)
 
 @router.post('/{student_id}/subjects', dependencies=[Depends(require_role('admin'))])
@@ -144,6 +155,10 @@ def remove_subject(student_id: str, subject_id: str, period: Optional[str] = Que
 @router.get('/parents/{parent_id}/children', dependencies=[Depends(require_role('admin', 'teacher'))])
 def get_parent_children(parent_id: str):
     return users_service.get_parent_children(parent_id)
+
+@router.get('/groups/{group_id}/details', dependencies=[Depends(require_role('admin', 'teacher'))])
+def get_group_details(group_id: str):
+    return users_service.get_group_details(group_id)
 
 @router.post('/parent-students', dependencies=[Depends(require_role('admin'))])
 def link_parent_student(body: ParentStudentLink):

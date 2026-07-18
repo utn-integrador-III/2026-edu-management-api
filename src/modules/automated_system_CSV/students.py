@@ -105,6 +105,36 @@ class StudentCSVProcessor:
         self.read_entries()
         return self.group_by_action()
 
+    def resolve_group(self, db, nivel, seccion) -> Optional[str]:
+        if not nivel or not seccion:
+            return None
+        nivel_clean = nivel.strip().lower()
+        seccion_clean = seccion.strip().upper()
+        
+        nivel_map = {
+            "septimo": "Septimo",
+            "sétimo": "Septimo",
+            "séptimo": "Septimo",
+            "octavo": "Octavo",
+            "noveno": "Noveno",
+            "decimo": "Decimo",
+            "décimo": "Decimo",
+            "undecimo": "Undecimo",
+            "undécimo": "Undecimo",
+            "duodecimo": "Duodecimo",
+            "duodécimo": "Duodecimo",
+            "primaria": "Primaria",
+            "secundaria": "Secundaria"
+        }
+        
+        nivel_normalized = nivel_map.get(nivel_clean, nivel.strip())
+        
+        row = db.groups.find_one({
+            "level": {"$regex": f"^{nivel_normalized}$", "$options": "i"},
+            "name": {"$regex": f"^{seccion_clean}$", "$options": "i"}
+        })
+        return str(row['_id']) if row else None
+
     def insert_records(self) -> int:
         if not self.entries:
             self.group_by_action()
@@ -121,10 +151,7 @@ class StudentCSVProcessor:
                     logging.error(f"Error insertando {entry.cedula}: El padre con cédula {entry.cedula_padre} no está registrado en el sistema.")
                     continue
 
-                group_id = None
-                if entry.nivel and entry.seccion:
-                    row = db.groups.find_one({"level": entry.nivel, "name": entry.seccion})
-                    group_id = str(row['_id']) if row else None
+                group_id = self.resolve_group(db, entry.nivel, entry.seccion)
                 student = svc_create({
                     'id_number':  entry.cedula,
                     'first_name': entry.nombre,
@@ -154,10 +181,7 @@ class StudentCSVProcessor:
                 if not found:
                     logging.warning(f"No encontrado para actualizar: {entry.cedula}")
                     continue
-                group_id = None
-                if entry.nivel and entry.seccion:
-                    row = db.groups.find_one({"level": entry.nivel, "name": entry.seccion})
-                    group_id = str(row['_id']) if row else None
+                group_id = self.resolve_group(db, entry.nivel, entry.seccion)
                 svc_update(str(found['_id']), {
                     'first_name': entry.nombre,
                     'last_name':  f"{entry.apellido1} {entry.apellido2}".strip(),
