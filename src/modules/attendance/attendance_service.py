@@ -1,8 +1,9 @@
-from datetime import datetime, date
+from datetime import datetime
 
 from bson import ObjectId
+from pymongo import ReturnDocument
 
-from src.config.database import db, serialize_doc, serialize_list
+from src.config.database import db, serialize_doc
 from src.modules.notifications import notifications_service
 from src.modules.users import users_service
 
@@ -14,82 +15,98 @@ def _resolve_object_id(value: str, field_name: str):
         raise ValueError(f"Invalid {field_name} format")
 
 
-def create_attendance(records: list, current_user: dict | None = None) -> dict:
-    if not records:
-        raise ValueError("At least one attendance record is required")
-
-    created_records = []
-    notification_results = []
-
-    for item in records:
-        student_id = _resolve_object_id(item.student_id, "student_id")
-        subject_id = _resolve_object_id(item.subject_id, "subject_id")
-
-        student = db.users.find_one({"_id": student_id, "role": "student", "active": True})
-        if not student:
-            raise ValueError(f"Student not found or inactive: {item.student_id}")
-
-        subject = db.subjects.find_one({"_id": subject_id})
-        if not subject:
-            raise ValueError(f"Subject not found: {item.subject_id}")
-
-        group_oid = None
-        if item.group_id:
-            group_oid = _resolve_object_id(item.group_id, "group_id")
-        elif student.get("group_id"):
-            group_oid = student["group_id"]
-
-        now = datetime.utcnow()
-        attendance_doc = {
-            "student_id": student_id,
-            "subject_id": subject_id,
-            "group_id": group_oid,
-            "status": item.status,
-            "note": item.note,
-            "attendance_date": now,
-            "recorded_at": now,
-            "recorded_by": ObjectId(current_user["id"]) if current_user and current_user.get("id") else None,
-            "created_at": now,
-        }
-
-        res = db.attendance.insert_one(attendance_doc)
-        attendance_doc["_id"] = res.inserted_id
-        created_records.append(serialize_doc(attendance_doc))
-
-        if item.status == "absent":
-            notification_results.append(
-                notifications_service.send_absence_notification(
-                    student=student,
-                    subject=subject,
-                    attendance=attendance_doc,
-                    current_user=current_user,
-                )
-            )
-        elif item.status == "tardiness":
-            notification_results.append(
-                notifications_service.send_tardiness_notification(
-                    student=student,
-                    subject=subject,
-                    attendance=attendance_doc,
-                    current_user=current_user,
-                )
-            )
-
-    return {
-        "message": "Attendance registered successfully",
-        "created": len(created_records),
-        "records": created_records,
-        "notifications": notification_results,
-    }
-
-
-def _parse_date_filter(value: str | None):
+def _parse_date(value: str, field_name: str = "date"):
     if not value:
-        return None
+        raise ValueError(f"{field_name} is required")
     try:
         return datetime.strptime(value, "%Y-%m-%d")
     except Exception:
-        raise ValueError("Invalid date format. Use YYYY-MM-DD")
+        raise ValueError(f"Invalid {field_name} format. Use YYYY-MM-DD")
+
+
+def _serialize_session(doc: dict) -> dict:
+    return {
+        "id": str(doc["_id"]),
+        "date": doc["attendance_date"].strftime("%Y-%m-%d"),
+        "group_id": str(doc["group_id"]),
+        "subject_id": str(doc["subject_id"]),
+        "records": [
+            {
+                "student_id": str(r["student_id"]),
+                "status": r["status"],
+                "arrival_time": r.get("arrival_time"),
+            }
+            for r in doc.get("records", [])
+        ],
+    }
+
+
+def create_attendance(body, current_user: dict | None = None) -> dict:
+    if not body.records:
+        raise ValueError("At least one attendance record is required")
+
+    attendance_date = _parse_date(body.date)
+    group_oid = _resolve_object_id(body.group_id, "group_id")
+    subject_oid = _resolve_object_id(body.subject_id, "subject_id")
+
+    if not db.groups.find_one({"_id": group_oid}):
+        raise ValueError(f"Group not found: {body.group_id}")
+
+    subject = db.subjects.find_one({"_id": subject_oid})
+    if not subject:
+        raise ValueError(f"Subject not found: {body.subject_id}")
+
+    now = datetime.utcnow()
+    record_docs = []
+    notification_results = []
+
+    for item in body.records:
+        student_oid = _resolve_object_id(item.student_id, "student_id")
+        student = db.users.find_one({"_id": student_oid, "role": "student", "active": True})
+        if not student:
+            raise ValueError(f"Student not found or inactive: {item.student_id}")
+
+        record_docs.append({
+            "student_id": student_oid,
+            "status": item.status,
+            "arrival_time": item.arrival_time,
+        })
+
+        if item.status == "ausente":
+            notification_results.append(
+                notifications_service.send_absence_notification(
+                    student=student, subject=subject, attendance={"recorded_at": now}, current_user=current_user,
+                )
+            )
+        elif item.status == "tardanza":
+            notification_results.append(
+                notifications_service.send_tardiness_notification(
+                    student=student, subject=subject, attendance={"recorded_at": now}, current_user=current_user,
+                )
+            )
+
+    session = db.attendance.find_one_and_update(
+        {"attendance_date": attendance_date, "group_id": group_oid, "subject_id": subject_oid},
+        {
+            "$set": {
+                "attendance_date": attendance_date,
+                "group_id": group_oid,
+                "subject_id": subject_oid,
+                "records": record_docs,
+                "recorded_by": ObjectId(current_user["id"]) if current_user and current_user.get("id") else None,
+                "updated_at": now,
+            },
+            "$setOnInsert": {"created_at": now},
+        },
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+    )
+
+    return {
+        "message": "Attendance registered successfully",
+        "session": _serialize_session(session),
+        "notifications": notification_results,
+    }
 
 
 def _ensure_parent_can_access_student(student_id: str, current_user: dict):
@@ -102,55 +119,27 @@ def _ensure_parent_can_access_student(student_id: str, current_user: dict):
         raise ValueError("Unauthorized to view this student's attendance")
 
 
-def _attach_related_fields(records: list) -> list:
-    output = []
-    for record in records:
-        student = db.users.find_one({"_id": ObjectId(record.get("student_id"))}) if record.get("student_id") else None
-        subject = db.subjects.find_one({"_id": ObjectId(record.get("subject_id"))}) if record.get("subject_id") else None
-        group = db.groups.find_one({"_id": ObjectId(record.get("group_id"))}) if record.get("group_id") else None
-
-        record["student_name"] = f"{student['first_name']} {student['last_name']}" if student else None
-        record["subject_name"] = subject["name"] if subject else None
-        record["group_name"] = group["name"] if group else None
-        output.append(record)
-    return output
-
-
 def get_attendance_history(filters: dict, current_user: dict | None = None) -> list:
     query = {}
-
-    if current_user.get("role") == "parent":
-        children = users_service.get_children(current_user["id"])
-        child_ids = [child["id"] for child in children]
-        if not child_ids:
-            return []
-        if filters.get("student_id"):
-            if filters["student_id"] not in child_ids:
-                raise ValueError("Unauthorized to view this student's attendance")
-            query["student_id"] = _resolve_object_id(filters["student_id"], "student_id")
-        else:
-            query["student_id"] = {"$in": [ObjectId(child_id) for child_id in child_ids]}
-    elif filters.get("student_id"):
-        student_oid = _resolve_object_id(filters["student_id"], "student_id")
-        query["student_id"] = student_oid
-        _ensure_parent_can_access_student(filters["student_id"], current_user)
-
-    if filters.get("subject_id"):
-        query["subject_id"] = _resolve_object_id(filters["subject_id"], "subject_id")
 
     if filters.get("group_id"):
         query["group_id"] = _resolve_object_id(filters["group_id"], "group_id")
 
-    if filters.get("status"):
-        query["status"] = filters["status"]
+    if filters.get("subject_id"):
+        query["subject_id"] = _resolve_object_id(filters["subject_id"], "subject_id")
 
     if filters.get("date"):
-        start = _parse_date_filter(filters["date"])
-        end = start.replace(hour=23, minute=59, second=59, microsecond=999999)
-        query["attendance_date"] = {"$gte": start, "$lte": end}
+        query["attendance_date"] = _parse_date(filters["date"])
 
-    records = list(db.attendance.find(query).sort([("attendance_date", -1), ("created_at", -1)]))
-    return _attach_related_fields(serialize_list(records))
+    if current_user and current_user.get("role") == "parent":
+        children = users_service.get_children(current_user["id"])
+        child_ids = [ObjectId(child["id"]) for child in children]
+        if not child_ids:
+            return []
+        query["records.student_id"] = {"$in": child_ids}
+
+    sessions = list(db.attendance.find(query).sort("attendance_date", -1))
+    return [_serialize_session(s) for s in sessions]
 
 
 def get_student_monthly_summary(student_id: str, current_user: dict | None = None, month: int | None = None, year: int | None = None) -> dict:
@@ -171,34 +160,38 @@ def get_student_monthly_summary(student_id: str, current_user: dict | None = Non
     else:
         end = datetime(year, month + 1, 1)
 
-    query = {
-        "student_id": student_oid,
+    sessions = list(db.attendance.find({
+        "records.student_id": student_oid,
         "attendance_date": {"$gte": start, "$lt": end},
-    }
-    records = list(db.attendance.find(query).sort([("attendance_date", 1)]))
+    }).sort("attendance_date", 1))
 
-    counts = {"present": 0, "absent": 0, "tardiness": 0}
+    counts = {"presente": 0, "ausente": 0, "tardanza": 0}
     by_day = {}
 
-    for record in records:
+    for session in sessions:
+        record = next((r for r in session["records"] if r["student_id"] == student_oid), None)
+        if not record:
+            continue
+
         status = record.get("status")
         if status in counts:
             counts[status] += 1
 
-        day_key = record["attendance_date"].strftime("%Y-%m-%d")
+        day_key = session["attendance_date"].strftime("%Y-%m-%d")
         by_day.setdefault(day_key, [])
         by_day[day_key].append({
-            "id": str(record["_id"]),
-            "status": record.get("status"),
-            "attendance_date": record["attendance_date"].isoformat(),
-            "subject_id": str(record["subject_id"]) if record.get("subject_id") else None,
-            "group_id": str(record["group_id"]) if record.get("group_id") else None,
+            "id": str(session["_id"]),
+            "status": status,
+            "arrival_time": record.get("arrival_time"),
+            "attendance_date": session["attendance_date"].isoformat(),
+            "subject_id": str(session["subject_id"]),
+            "group_id": str(session["group_id"]),
         })
 
     return {
         "student": serialize_doc(student),
         "period": {"month": month, "year": year},
         "summary": counts,
-        "total_records": len(records),
+        "total_records": len(sessions),
         "daily_records": by_day,
     }

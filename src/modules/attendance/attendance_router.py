@@ -9,44 +9,37 @@ from src.modules.attendance import attendance_service
 router = APIRouter()
 
 
-class AttendanceItem(BaseModel):
+class AttendanceRecordItem(BaseModel):
     student_id: str = Field(..., min_length=1)
-    subject_id: str = Field(..., min_length=1)
-    status: str = Field(..., pattern="^(present|absent|tardiness)$")
-    group_id: str | None = None
-    note: str | None = None
+    status: str = Field(..., pattern="^(presente|ausente|tardanza)$")
+    arrival_time: Optional[str] = None
 
 
 class AttendanceCreateRequest(BaseModel):
-    records: List[AttendanceItem]
+    date: str
+    group_id: str = Field(..., min_length=1)
+    subject_id: str = Field(..., min_length=1)
+    records: List[AttendanceRecordItem]
 
 
 @router.post("")
 def create_attendance(body: AttendanceCreateRequest, current_user: dict = Depends(require_role("admin", "teacher"))):
     try:
-        return attendance_service.create_attendance(body.records, current_user)
+        return attendance_service.create_attendance(body, current_user)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("")
 def get_attendance_history(
-    student_id: Optional[str] = Query(None),
-    subject_id: Optional[str] = Query(None),
     group_id: Optional[str] = Query(None),
+    subject_id: Optional[str] = Query(None),
     date: Optional[str] = Query(None),
-    status: Optional[str] = Query(None),
     current_user: dict = Depends(require_role("admin", "teacher", "parent")),
 ):
     try:
         return attendance_service.get_attendance_history(
-            {
-                "student_id": student_id,
-                "subject_id": subject_id,
-                "group_id": group_id,
-                "date": date,
-                "status": status,
-            },
+            {"group_id": group_id, "subject_id": subject_id, "date": date},
             current_user,
         )
     except ValueError as e:
