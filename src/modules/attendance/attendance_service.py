@@ -171,34 +171,76 @@ def get_student_monthly_summary(student_id: str, current_user: dict | None = Non
     else:
         end = datetime(year, month + 1, 1)
 
-    query = {
-        "student_id": student_oid,
-        "attendance_date": {"$gte": start, "$lt": end},
-    }
-    records = list(db.attendance.find(query).sort([("attendance_date", 1)]))
+    pipeline = [
+        {
+            "$match": {
+                "student_id": student_oid,
+                "attendance_date": {"$gte": start, "$lt": end},
+                "status": {"$in": ["absent", "tardiness"]},
+            }
+        },
+        {
+            "$group": {
+                "_id": "$subject_id",
+                "absent": {
+                    "$sum": {"$cond": [{"$eq": ["$status", "absent"]}, 1, 0]}
+                },
+                "tardiness": {
+                    "$sum": {"$cond": [{"$eq": ["$status", "tardiness"]}, 1, 0]}
+                },
+                "total": {"$sum": 1},
+            }
+        },
+        {
+            "$lookup": {
+                "from": "subjects",
+                "localField": "_id",
+                "foreignField": "_id",
+                "as": "subject",
+            }
+        },
+        {
+            "$unwind": {
+                "path": "$subject",
+                "preserveNullAndEmptyArrays": True,
+            }
+        },
+        {
+            "$project": {
+                "_id": 0,
+                "subject_id": "$_id",
+                "subject_name": "$subject.name",
+                "subject_code": "$subject.code",
+                "absent": 1,
+                "tardiness": 1,
+                "total": 1,
+            }
+        },
+        {"$sort": {"subject_name": 1, "subject_code": 1}},
+    ]
 
-    counts = {"present": 0, "absent": 0, "tardiness": 0}
-    by_day = {}
+    subject_rows = list(db.attendance.aggregate(pipeline))
+    total_absent = sum(row.get("absent", 0) for row in subject_rows)
+    total_tardiness = sum(row.get("tardiness", 0) for row in subject_rows)
 
-    for record in records:
-        status = record.get("status")
-        if status in counts:
-            counts[status] += 1
-
-        day_key = record["attendance_date"].strftime("%Y-%m-%d")
-        by_day.setdefault(day_key, [])
-        by_day[day_key].append({
-            "id": str(record["_id"]),
-            "status": record.get("status"),
-            "attendance_date": record["attendance_date"].isoformat(),
-            "subject_id": str(record["subject_id"]) if record.get("subject_id") else None,
-            "group_id": str(record["group_id"]) if record.get("group_id") else None,
+    subjects = []
+    for row in subject_rows:
+        subjects.append({
+            "subject_id": str(row.get("subject_id")) if row.get("subject_id") else None,
+            "subject_name": row.get("subject_name"),
+            "subject_code": row.get("subject_code"),
+            "absent": row.get("absent", 0),
+            "tardiness": row.get("tardiness", 0),
+            "total": row.get("total", 0),
         })
 
     return {
         "student": serialize_doc(student),
         "period": {"month": month, "year": year},
-        "summary": counts,
-        "total_records": len(records),
-        "daily_records": by_day,
+        "summary": {
+            "absent": total_absent,
+            "tardiness": total_tardiness,
+            "total": total_absent + total_tardiness,
+        },
+        "subjects": subjects,
     }

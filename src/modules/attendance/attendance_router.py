@@ -54,7 +54,7 @@ def get_attendance_history(
 
 
 @router.get("/students/{student_id}/monthly")
-def get_monthly_attendance(student_id: str, month: Optional[int] = Query(None, ge=1, le=12), year: Optional[int] = Query(None, ge=2000), current_user: dict = Depends(require_role("admin", "teacher", "parent"))):
+def get_monthly_attendance(student_id: str, month: int = Query(..., ge=1, le=12), year: Optional[int] = Query(None, ge=2000), current_user: dict = Depends(require_role("admin", "teacher", "parent"))):
     try:
         return attendance_service.get_student_monthly_summary(student_id, current_user, month=month, year=year)
     except ValueError as e:
