@@ -31,6 +31,11 @@ try:
         pass
     db.users.create_index("email", unique=True, partialFilterExpression={"email": {"$type": "string"}})
     db.subjects.create_index("code", unique=True)
+    db.attendance.create_index([("student_id", 1), ("attendance_date", -1)])
+    db.attendance.create_index([("subject_id", 1), ("attendance_date", -1)])
+    db.attendance.create_index([("group_id", 1), ("attendance_date", -1)])
+    db.notifications.create_index([("parent_id", 1), ("created_at", -1)])
+    db.notifications.create_index([("type", 1), ("created_at", -1)])
     db.token_blacklist.create_index("token", unique=True)
     db.password_reset_tokens.create_index("token", unique=True)
     logger.info("MongoDB indexes verified/created successfully.")
