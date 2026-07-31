@@ -154,7 +154,7 @@ A continuación se detalla la planeación y estado de los endpoints del backend:
 
 ---
 
-### 📅 Release 2 — Asistencia, Calendario y Notificaciones
+### 📅 Release 2 — Asistencia, Calendario y Notificaciones (Parcialmente completado)
 
 #### Módulo de Asistencia (`/api/v1/attendance`)
 * `POST /`: Registra en lote asistencia diaria (Presente, Ausente, Tardanza) de un grupo.
