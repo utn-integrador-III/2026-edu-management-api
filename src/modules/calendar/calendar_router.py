@@ -14,10 +14,14 @@ class CalendarEventCreate(BaseModel):
     start_date: str
     end_date: str | None = None
     group_id: str | None = None
+    start_time: str | None = None
+    end_time: str | None = None
+    location: str | None = None
+    subject_id: str | None = None
 
 
 @router.post("/events")
-def create_event(body: CalendarEventCreate, current_user: dict = Depends(require_role("admin"))):
+def create_event(body: CalendarEventCreate, current_user: dict = Depends(require_role("admin","teacher"))):
     try:
         return calendar_service.create_event(body.model_dump(), current_user)
     except ValueError as e:
@@ -31,7 +35,9 @@ def get_events(
     active: bool | None = Query(None),
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
-    _current_user: dict = Depends(require_role("admin")),
+    month: int | None = Query(None),
+    year: int | None = Query(None),
+    _current_user: dict = Depends(require_role("admin", "teacher")),
 ):
     filters = {
         "group_id": group_id,
@@ -39,6 +45,8 @@ def get_events(
         "active": active,
         "date_from": date_from,
         "date_to": date_to,
+        "month": month,
+        "year": year,
     }
     return calendar_service.get_events(filters)
 
