@@ -141,6 +141,35 @@ def _ensure_parent_can_access_student(student_id: str, current_user: dict):
         raise ValueError("Unauthorized to view this student's attendance")
 
 
+def _resolve_session_metadata(student_oid: ObjectId, subject_oid: ObjectId, group_oid: ObjectId | None) -> dict:
+    subject = db.subjects.find_one({"_id": subject_oid})
+
+    group = None
+    if group_oid:
+        group = db.groups.find_one({"_id": group_oid})
+
+    teacher_name = ""
+    link_query = {
+        "student_id": student_oid,
+        "subject_id": subject_oid,
+    }
+    if group_oid:
+        link_query["group_id"] = group_oid
+
+    link = db.student_subjects.find_one(link_query)
+    if link and link.get("teacher_id"):
+        teacher = db.users.find_one({"_id": ObjectId(link["teacher_id"])})
+        if teacher:
+            teacher_name = f"{teacher['first_name']} {teacher['last_name']}"
+
+    return {
+        "subject_name": subject.get("name") if subject else None,
+        "subject_code": subject.get("code") if subject else None,
+        "teacher_name": teacher_name,
+        "group_name": group.get("name") if group else None,
+    }
+
+
 def get_attendance_history(filters: dict, current_user: dict | None = None) -> list:
     query = {}
 
@@ -164,7 +193,7 @@ def get_attendance_history(filters: dict, current_user: dict | None = None) -> l
     return [_serialize_session(s) for s in sessions]
 
 
-def get_student_monthly_summary(student_id: str, current_user: dict | None = None, month: int | None = None, year: int | None = None) -> dict:
+def get_student_monthly_summary(student_id: str, current_user: dict | None = None, month: int | None = None, year: int | None = None) -> list:
     student_oid = _resolve_object_id(student_id, "student_id")
     _ensure_parent_can_access_student(student_id, current_user)
 
@@ -182,49 +211,40 @@ def get_student_monthly_summary(student_id: str, current_user: dict | None = Non
     else:
         end = datetime(year, month + 1, 1)
 
-    query = {
-        "student_id": student_oid,
+    sessions = list(db.attendance.find({
+        "records.student_id": student_oid,
         "attendance_date": {"$gte": start, "$lt": end},
-    }
-    records = list(db.attendance.find(query).sort([("attendance_date", 1)]))
+    }).sort([("attendance_date", 1)]))
 
-    counts = {"present": 0, "absent": 0, "tardiness": 0}
-    by_day = {}
+    results = []
 
-    for record in records:
-        try:
-            status = _normalize_status(record.get("status"))
-        except ValueError:
-            status = record.get("status")
+    for session in sessions:
+        record = next((r for r in session.get("records", []) if r.get("student_id") == student_oid), None)
+        if not record:
+            continue
 
-        if status == "presente":
-            counts["present"] += 1
-        elif status == "ausente":
-            counts["absent"] += 1
-        elif status == "tardanza":
-            counts["tardiness"] += 1
+        status = _normalize_status(record.get("status"))
 
-        day_key = record["attendance_date"].strftime("%Y-%m-%d")
-        by_day.setdefault(day_key, [])
-        by_day[day_key].append({
-            "id": str(record["_id"]),
-            "status": record.get("status"),
-            "attendance_date": record["attendance_date"].isoformat(),
-            "subject_id": str(record["subject_id"]) if record.get("subject_id") else None,
-            "group_id": str(record["group_id"]) if record.get("group_id") else None,
+        metadata = _resolve_session_metadata(
+            student_oid=student_oid,
+            subject_oid=session["subject_id"],
+            group_oid=session.get("group_id"),
+        )
+        day_key = session["attendance_date"].strftime("%Y-%m-%d")
+
+        results.append({
+            "id": str(session["_id"]),
+            "date": day_key,
+            "status": status,
+            "arrival_time": record.get("arrival_time"),
+            "attendance_date": session["attendance_date"].isoformat(),
+            "student_id": str(student_oid),
+            "subject_id": str(session["subject_id"]) if session.get("subject_id") else None,
+            "subject_name": metadata["subject_name"],
+            "subject_code": metadata["subject_code"],
+            "teacher_name": metadata["teacher_name"],
+            "group_id": str(session["group_id"]) if session.get("group_id") else None,
+            "group_name": metadata["group_name"],
         })
 
-    return {
-        "student": serialize_doc(student),
-        "period": {"month": month, "year": year},
-        "summary": {
-            "presente": counts["present"],
-            "ausente": counts["absent"],
-            "tardanza": counts["tardiness"],
-            "present": counts["present"],
-            "absent": counts["absent"],
-            "tardiness": counts["tardiness"],
-        },
-        "total_records": len(records),
-        "daily_records": by_day,
-    }
+    return results
