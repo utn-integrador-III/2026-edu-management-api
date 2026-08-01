@@ -26,6 +26,10 @@ def _serialize_event(doc: dict) -> dict:
     event = serialize_doc(doc)
     if event.get("scope") is None:
         event["scope"] = "institution" if not event.get("group_id") else "group"
+    if "start_date" in event and isinstance(event["start_date"], str) and "T" in event["start_date"]:
+        event["start_date"] = event["start_date"].split("T")[0]
+    if "end_date" in event and isinstance(event["end_date"], str) and "T" in event["end_date"]:
+        event["end_date"] = event["end_date"].split("T")[0]
     return event
 
 
