@@ -154,16 +154,16 @@ A continuación se detalla la planeación y estado de los endpoints del backend:
 
 ---
 
-### 📅 Release 2 — Asistencia, Calendario y Notificaciones Firebase (Próximo)
+### 📅 Release 2 — Asistencia, Calendario y Notificaciones (Parcialmente completado)
 
 #### Módulo de Asistencia (`/api/v1/attendance`)
 * `POST /`: Registra en lote asistencia diaria (Presente, Ausente, Tardanza) de un grupo.
 * `GET /`: Recupera historial de asistencia por materia y fecha.
-* `GET /students/{student_id}/monthly`: Retorna estadísticas mensuales para visualización móvil.
+* `GET /students/{student_id}/monthly`: Retorna estadísticas mensuales para visualización móvil. **Implementado**.
 
 #### Módulo de Notificaciones (`/api/v1/notifications`)
-* `POST /send-absence`: Detecta ausencias y despacha alertas push a padres vía Firebase (FCM).
-* `POST /send-tardiness`: Despacha alerta push con marca de tiempo de llegada tardía a padres vía FCM.
+* `POST /send-absence`: Detecta ausencias y despacha notificación a padres por correo. La integración Firebase/FCM sigue pendiente.
+* `POST /send-tardiness`: Despacha notificación con marca de tiempo de llegada tardía a padres por correo. La integración Firebase/FCM sigue pendiente.
 
 #### Módulo de Calendario Escolar (`/api/v1/calendar`)
 * `POST /events`: Registra evento escolar (Examen, Actividad, Feriado) vinculado a una sección.
