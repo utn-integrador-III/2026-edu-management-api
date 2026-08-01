@@ -10,7 +10,7 @@ router = APIRouter()
 class CalendarEventCreate(BaseModel):
     title: str = Field(..., min_length=1)
     description: str | None = None
-    type: str = Field(default="event")
+    event_type: str = Field(default="academico")
     start_date: str
     end_date: str | None = None
     group_id: str | None = None
@@ -31,7 +31,7 @@ def create_event(body: CalendarEventCreate, current_user: dict = Depends(require
 @router.get("/events")
 def get_events(
     group_id: str | None = Query(None),
-    type: str | None = Query(None),
+    event_type: str | None = Query(None),
     active: bool | None = Query(None),
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
@@ -41,7 +41,7 @@ def get_events(
 ):
     filters = {
         "group_id": group_id,
-        "type": type,
+        "event_type": event_type,
         "active": active,
         "date_from": date_from,
         "date_to": date_to,

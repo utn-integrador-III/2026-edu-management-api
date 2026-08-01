@@ -67,6 +67,7 @@ def create_event(data: dict, current_user: dict) -> dict:
         "end_date": end_date or start_date,
         "active": True,
         "created_by": ObjectId(current_user["id"]) if current_user.get("id") else None,
+        "organizer_name": current_user.get("first_name"),
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
         
@@ -83,8 +84,8 @@ def get_events(filters: dict | None = None) -> list:
 
     if filters.get("group_id"):
         query["group_id"] = _resolve_object_id(filters["group_id"], "group_id")
-    if filters.get("type"):
-        query["type"] = filters["type"]
+    if filters.get("event_type"):
+        query["event_type"] = filters["event_type"]
     if filters.get("active") is not None:
         query["active"] = filters["active"]
     date_from = None
