@@ -9,3 +9,4 @@ pymongo
 dnspython
 motor
 bcrypt==3.2.2
+requests
