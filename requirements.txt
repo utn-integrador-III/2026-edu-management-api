@@ -10,3 +10,6 @@ dnspython
 motor
 bcrypt==3.2.2
 requests
+mongomock
+pytest
+httpx
