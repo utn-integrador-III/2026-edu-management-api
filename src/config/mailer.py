@@ -1,16 +1,20 @@
 import os
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+import requests
+
+RESEND_API_URL = "https://api.resend.com/emails"
 
 def send_mail(to: str, subject: str, html: str):
-    msg = MIMEMultipart('alternative')
-    msg['Subject'] = subject
-    msg['From']    = os.getenv('EMAIL_FROM')
-    msg['To']      = to
-    msg.attach(MIMEText(html, 'html'))
-
-    with smtplib.SMTP(os.getenv('SMTP_HOST'), int(os.getenv('SMTP_PORT', 587))) as server:
-        server.starttls()
-        server.login(os.getenv('SMTP_USER'), os.getenv('SMTP_PASS'))
-        server.send_message(msg)
+    response = requests.post(
+        RESEND_API_URL,
+        headers={
+            "Authorization": f"Bearer {os.getenv('RESEND_API_KEY')}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "from": os.getenv("EMAIL_FROM"),
+            "to": [to],
+            "subject": subject,
+            "html": html,
+        },
+    )
+    response.raise_for_status()
