@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import patch
 from src.config.database import db
 
 def test_health(client):
@@ -70,6 +71,20 @@ def test_recover_password(client, seed_users):
     token_record = db.password_reset_tokens.find_one({"user_id": db.users.find_one({"id_number": "teacher1"})["_id"]})
     assert token_record is not None
     assert token_record["used"] is False
+
+def test_recover_password_logs_resend_error(client, seed_users, caplog):
+    with patch("src.modules.auth.auth_service.send_mail", side_effect=Exception("Resend down")):
+        with caplog.at_level("ERROR", logger="Auth"):
+            response = client.post("/api/v1/auth/recover-password", json={
+                "id_number": "teacher1"
+            })
+
+    # El endpoint sigue respondiendo igual aunque Resend falle (no revela si el usuario existe)
+    assert response.status_code == 200
+    assert "recovery email will be sent" in response.json()["message"]
+
+    # Pero el error real queda logueado en el servidor
+    assert any("Resend down" in record.message for record in caplog.records)
 
 def test_reset_password_success(client, seed_users):
     client.post("/api/v1/auth/recover-password", json={
