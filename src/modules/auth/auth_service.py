@@ -1,5 +1,6 @@
 import os
 import secrets
+import logging
 from datetime import datetime, timedelta
 from passlib.context import CryptContext
 from jose import jwt
@@ -8,6 +9,7 @@ from src.config.database import db
 from src.config.mailer import send_mail
 
 pwd_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
+logger = logging.getLogger("Auth")
 
 # RF-01
 def login(id_number: str, password: str) -> dict:
@@ -92,8 +94,12 @@ def forgot_password(id_number: str):
                 <p>If you did not make this request, please ignore this email.</p>
             """
         )
-    except Exception:
-        pass
+    except Exception as e:
+        resend_detail = getattr(getattr(e, 'response', None), 'text', '')
+        logger.error(
+            f"No se pudo enviar el correo de recuperacion a {user['email']}: {e}"
+            + (f" | Respuesta de Resend: {resend_detail}" if resend_detail else "")
+        )
 
 # RF-03: aplicar nueva contraseña
 def reset_password(token: str, new_password: str):
