@@ -37,3 +37,18 @@ def send_tardiness(body: NotificationRequest, current_user: dict = Depends(requi
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/")
+def get_reminders(current_user: dict = Depends(require_role("parent"))):
+    """Lista los recordatorios de calendario del encargado autenticado."""
+    return notifications_service.list_reminders(current_user["id"])
+
+
+@router.put("/{notification_id}/read")
+def read_reminder(notification_id: str, current_user: dict = Depends(require_role("parent"))):
+    """Marca una notificación de calendario como leída."""
+    try:
+        return notifications_service.mark_as_read(notification_id, current_user["id"])
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

@@ -13,3 +13,4 @@ requests
 mongomock
 pytest
 httpx
+apscheduler

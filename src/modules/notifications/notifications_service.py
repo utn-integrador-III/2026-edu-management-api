@@ -143,3 +143,34 @@ def send_tardiness_by_ids(student_id: str, subject_id: str, attendance_id: str |
         attendance = {"_id": None, "recorded_at": datetime.utcnow()}
 
     return _send_notification("tardiness", student, subject, attendance, current_user)
+
+
+def list_reminders(parent_id: str) -> list:
+    """Devuelve todas las notificaciones de tipo calendar_reminder del encargado autenticado."""
+    parent_oid = _resolve_object_id(parent_id, "parent_id")
+    docs = list(
+        db.notifications.find(
+            {"parent_id": parent_oid, "type": "calendar_reminder"}
+        ).sort("created_at", -1)
+    )
+    return [serialize_doc(doc) for doc in docs]
+
+
+def mark_as_read(notification_id: str, parent_id: str) -> dict:
+    """Marca una notificación como leída. Solo el encargado propietario puede hacerlo."""
+    notif_oid = _resolve_object_id(notification_id, "notification_id")
+    parent_oid = _resolve_object_id(parent_id, "parent_id")
+
+    notification = db.notifications.find_one({"_id": notif_oid})
+    if not notification:
+        raise ValueError("Notification not found")
+
+    if notification.get("parent_id") != parent_oid:
+        raise ValueError("Unauthorized: this notification does not belong to you")
+
+    db.notifications.update_one(
+        {"_id": notif_oid},
+        {"$set": {"read": True, "read_at": datetime.utcnow()}},
+    )
+    updated = db.notifications.find_one({"_id": notif_oid})
+    return serialize_doc(updated)
