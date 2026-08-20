@@ -51,4 +51,4 @@ def read_reminder(notification_id: str, current_user: dict = Depends(require_rol
     try:
         return notifications_service.mark_as_read(notification_id, current_user["id"])
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
