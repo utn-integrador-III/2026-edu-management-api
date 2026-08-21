@@ -20,6 +20,19 @@ class CalendarEventCreate(BaseModel):
     subject_id: str | None = None
 
 
+class CalendarEventUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1)
+    description: str | None = None
+    event_type: str | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+    group_id: str | None = None
+    start_time: str | None = None
+    end_time: str | None = None
+    location: str | None = None
+    subject_id: str | None = None
+
+
 @router.post("/events")
 def create_event(body: CalendarEventCreate, current_user: dict = Depends(require_role("admin","teacher"))):
     try:
@@ -57,3 +70,25 @@ def get_student_events(student_id: str, current_user: dict = Depends(require_rol
         return calendar_service.get_student_events(student_id, current_user)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.put("/events/{event_id}")
+def update_event(event_id: str, body: CalendarEventUpdate, current_user: dict = Depends(require_role("admin", "teacher"))):
+    try:
+        return calendar_service.update_event(event_id, body.model_dump(exclude_unset=True), current_user)
+    except ValueError as e:
+        detail = str(e)
+        if "Unauthorized" in detail:
+            raise HTTPException(status_code=403, detail=detail)
+        raise HTTPException(status_code=400, detail=detail)
+
+
+@router.delete("/events/{event_id}")
+def delete_event(event_id: str, current_user: dict = Depends(require_role("admin", "teacher"))):
+    try:
+        return calendar_service.delete_event(event_id, current_user)
+    except ValueError as e:
+        detail = str(e)
+        if "Unauthorized" in detail:
+            raise HTTPException(status_code=403, detail=detail)
+        raise HTTPException(status_code=400, detail=detail)
