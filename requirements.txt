@@ -13,4 +13,5 @@ requests
 mongomock
 pytest
 httpx
+reportlab
 apscheduler
