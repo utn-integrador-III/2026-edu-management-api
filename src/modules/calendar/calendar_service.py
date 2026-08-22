@@ -5,6 +5,7 @@ from pymongo import ReturnDocument
 
 from src.config.database import db, serialize_doc
 from src.config.mailer import send_mail
+from src.jobs.calendar_reminders import send_reminder_for_event
 from src.modules.users import users_service
 
 
@@ -410,4 +411,26 @@ def delete_event(event_id: str, current_user: dict) -> dict:
         "message": "Event deleted successfully",
         "event": _serialize_event(deleted),
         "notifications": notifications,
+    }
+
+
+def send_event_reminder(event_id: str, current_user: dict) -> dict:
+    """Permite al creador del evento (o a un admin) disparar manualmente el
+    recordatorio de un evento puntual, sin esperar el ciclo del scheduler."""
+    event_oid = _resolve_object_id(event_id, "event_id")
+    event = db.calendar_events.find_one({"_id": event_oid})
+    if not event:
+        raise ValueError("Event not found")
+
+    if not _is_event_creator_or_admin(event, current_user):
+        raise ValueError("Unauthorized to send a reminder for this event")
+
+    if not event.get("active", True):
+        raise ValueError("Cannot send a reminder for an inactive/deleted event")
+
+    summary = send_reminder_for_event(event_oid)
+    return {
+        "message": "Reminder sent for event",
+        "event_id": str(event_oid),
+        "summary": summary,
     }

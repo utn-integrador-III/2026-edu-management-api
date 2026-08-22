@@ -92,3 +92,16 @@ def delete_event(event_id: str, current_user: dict = Depends(require_role("admin
         if "Unauthorized" in detail:
             raise HTTPException(status_code=403, detail=detail)
         raise HTTPException(status_code=400, detail=detail)
+
+
+@router.post("/events/{event_id}/send-reminder")
+def send_event_reminder(event_id: str, current_user: dict = Depends(require_role("admin", "teacher"))):
+    try:
+        return calendar_service.send_event_reminder(event_id, current_user)
+    except ValueError as e:
+        detail = str(e)
+        if "Unauthorized" in detail:
+            raise HTTPException(status_code=403, detail=detail)
+        if "not found" in detail.lower():
+            raise HTTPException(status_code=404, detail=detail)
+        raise HTTPException(status_code=400, detail=detail)
