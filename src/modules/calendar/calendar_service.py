@@ -239,18 +239,11 @@ def create_event(data: dict, current_user: dict) -> dict:
     return _serialize_event(event_doc)
 
 
-def get_events(filters: dict | None = None) -> list:
-    filters = filters or {}
+def _build_date_range_query(filters: dict) -> dict:
+    """Construye el filtro de rango de fechas (start_date) a partir de month/year
+    o date_from/date_to. Se comparte entre get_events y get_student_events para
+    que ambos respeten los mismos filtros de periodo."""
     query = {}
-
-    if filters.get("group_id"):
-        query["group_id"] = _resolve_object_id(filters["group_id"], "group_id")
-    if filters.get("event_type"):
-        query["event_type"] = filters["event_type"]
-    if filters.get("active") is not None:
-        query["active"] = filters["active"]
-    date_from = None
-    date_to = None
 
     if filters.get("month"):
         month = int(filters["month"])
@@ -263,24 +256,38 @@ def get_events(filters: dict | None = None) -> list:
             date_to = datetime(year + 1, 1, 1)
         else:
             date_to = datetime(year, month + 1, 1)
+        query["start_date"] = {"$gte": date_from, "$lt": date_to}
     elif filters.get("date_from") or filters.get("date_to"):
         date_query = {}
         if filters.get("date_from"):
-            date_from = _parse_date(filters["date_from"], "date_from")
-            date_query["$gte"] = date_from
+            date_query["$gte"] = _parse_date(filters["date_from"], "date_from")
         if filters.get("date_to"):
-            date_to = _parse_date(filters["date_to"], "date_to")
-            date_query["$lte"] = date_to
+            date_query["$lte"] = _parse_date(filters["date_to"], "date_to")
         query["start_date"] = date_query
 
-    if date_from and date_to and filters.get("month"):
-        query["start_date"] = {"$gte": date_from, "$lt": date_to}
+    return query
+
+
+def get_events(filters: dict | None = None) -> list:
+    filters = filters or {}
+    query = {}
+
+    if filters.get("group_id"):
+        query["group_id"] = _resolve_object_id(filters["group_id"], "group_id")
+    if filters.get("event_type"):
+        query["event_type"] = filters["event_type"]
+    if filters.get("active") is not None:
+        query["active"] = filters["active"]
+
+    query.update(_build_date_range_query(filters))
 
     events = list(db.calendar_events.find(query).sort([("start_date", -1), ("created_at", -1)]))
     return [_serialize_event(event) for event in events]
 
 
-def get_student_events(student_id: str, current_user: dict | None = None) -> list:
+def get_student_events(student_id: str, current_user: dict | None = None, filters: dict | None = None) -> list:
+    filters = filters or {}
+
     student_oid = _resolve_object_id(student_id, "student_id")
     student = db.users.find_one({"_id": student_oid, "role": "student", "active": True})
     if not student:
@@ -292,15 +299,22 @@ def get_student_events(student_id: str, current_user: dict | None = None) -> lis
         if student_id not in child_ids:
             raise ValueError("Unauthorized to view this student's events")
 
-    today = datetime.utcnow().date()
     query = {
         "active": True,
         "$or": [
             {"group_id": None},
             {"group_id": student.get("group_id")},
         ],
-        "end_date": {"$gte": datetime.combine(today, datetime.min.time())},
     }
+
+    date_range_query = _build_date_range_query(filters)
+    if date_range_query.get("start_date"):
+        # Si el padre/admin pidió un mes/periodo específico, filtramos por ese rango.
+        query["start_date"] = date_range_query["start_date"]
+    else:
+        # Sin mes/periodo especificado: comportamiento por defecto = próximos eventos.
+        today = datetime.utcnow().date()
+        query["end_date"] = {"$gte": datetime.combine(today, datetime.min.time())}
 
     events = list(db.calendar_events.find(query).sort([("start_date", 1), ("created_at", -1)]))
     return [_serialize_event(event) for event in events]
