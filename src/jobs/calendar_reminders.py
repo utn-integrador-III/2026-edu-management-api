@@ -127,11 +127,46 @@ def _send_reminder(event: dict, parent: dict) -> dict:
     return notification_doc
 
 
+def _process_event(event: dict) -> dict:
+    """Resuelve encargados de un evento y envía/persiste sus recordatorios.
+    Compartido entre el job automático y el disparo manual por evento."""
+    event_id: ObjectId = event["_id"]
+    group_id = event.get("group_id")
+    scope = event.get("scope") or ("group" if group_id else "institution")
+
+    if scope == "institution" or group_id is None:
+        parents = _get_parents_for_institution()
+    else:
+        parents = _get_parents_for_group(group_id)
+
+    sent = skipped = failed = duplicated = 0
+
+    for parent in parents:
+        parent_id: ObjectId = parent["_id"]
+
+        # Deduplicación: evita reenviar el mismo recordatorio al mismo encargado
+        if _already_sent(event_id, parent_id):
+            duplicated += 1
+            continue
+
+        result = _send_reminder(event, parent)
+
+        if result["status"] == "sent":
+            sent += 1
+        elif result["status"] == "skipped":
+            skipped += 1
+        else:
+            failed += 1
+
+    return {"sent": sent, "skipped": skipped, "failed": failed, "duplicated": duplicated}
+
+
 def run_calendar_reminders() -> dict:
     """
-    Job principal. Busca eventos activos que inician en las próximas 24 horas,
-    resuelve los encargados según el alcance y envía/persiste recordatorios.
-    Retorna un resumen con conteos para logging.
+    Job principal (scheduler, corre cada hora). Busca eventos activos que
+    inician en las próximas 24 horas, resuelve los encargados según el
+    alcance y envía/persiste recordatorios. Retorna un resumen con conteos
+    para logging.
     """
     now = datetime.utcnow()
     window_start = now
@@ -152,38 +187,36 @@ def run_calendar_reminders() -> dict:
         logger.info("No hay eventos próximos en las siguientes 24 horas.")
         return {"sent": 0, "skipped": 0, "failed": 0, "duplicated": 0}
 
-    sent = skipped = failed = duplicated = 0
-
+    totals = {"sent": 0, "skipped": 0, "failed": 0, "duplicated": 0}
     for event in events:
-        event_id: ObjectId = event["_id"]
-        group_id = event.get("group_id")
-        scope = event.get("scope") or ("group" if group_id else "institution")
-
-        # Resolver encargados según alcance
-        if scope == "institution" or group_id is None:
-            parents = _get_parents_for_institution()
-        else:
-            parents = _get_parents_for_group(group_id)
-
-        for parent in parents:
-            parent_id: ObjectId = parent["_id"]
-
-            # Deduplicación
-            if _already_sent(event_id, parent_id):
-                duplicated += 1
-                continue
-
-            result = _send_reminder(event, parent)
-
-            if result["status"] == "sent":
-                sent += 1
-            elif result["status"] == "skipped":
-                skipped += 1
-            else:
-                failed += 1
+        result = _process_event(event)
+        for key in totals:
+            totals[key] += result[key]
 
     logger.info(
         "Job calendar_reminders finalizado. Enviados: %d | Omitidos: %d | Fallidos: %d | Duplicados evitados: %d",
-        sent, skipped, failed, duplicated,
+        totals["sent"], totals["skipped"], totals["failed"], totals["duplicated"],
     )
-    return {"sent": sent, "skipped": skipped, "failed": failed, "duplicated": duplicated}
+    return totals
+
+
+def send_reminder_for_event(event_id: ObjectId) -> dict:
+    """
+    Dispara el recordatorio de UN evento puntual, al instante, sin esperar
+    el ciclo del scheduler. Pensado para que el profesor lo active a mano
+    desde la interfaz para ese evento específico. No toca ni depende de la
+    ventana de 24h del job automático: si el evento existe y está activo,
+    se procesa. Respeta la misma deduplicación (no reenvía a un encargado
+    que ya recibió el recordatorio de ese evento).
+    """
+    event = db.calendar_events.find_one({"_id": event_id})
+    if not event:
+        raise ValueError("Event not found")
+
+    logger.info("Disparo manual de recordatorio para evento %s", event_id)
+    result = _process_event(event)
+    logger.info(
+        "Recordatorio manual finalizado para evento %s. Enviados: %d | Omitidos: %d | Fallidos: %d | Duplicados evitados: %d",
+        event_id, result["sent"], result["skipped"], result["failed"], result["duplicated"],
+    )
+    return result
