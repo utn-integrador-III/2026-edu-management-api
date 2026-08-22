@@ -65,9 +65,22 @@ def get_events(
 
 
 @router.get("/students/{student_id}/events")
-def get_student_events(student_id: str, current_user: dict = Depends(require_role("admin", "teacher", "parent"))):
+def get_student_events(
+    student_id: str,
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    month: int | None = Query(None),
+    year: int | None = Query(None),
+    current_user: dict = Depends(require_role("admin", "teacher", "parent")),
+):
+    filters = {
+        "date_from": date_from,
+        "date_to": date_to,
+        "month": month,
+        "year": year,
+    }
     try:
-        return calendar_service.get_student_events(student_id, current_user)
+        return calendar_service.get_student_events(student_id, current_user, filters)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -91,4 +104,17 @@ def delete_event(event_id: str, current_user: dict = Depends(require_role("admin
         detail = str(e)
         if "Unauthorized" in detail:
             raise HTTPException(status_code=403, detail=detail)
+        raise HTTPException(status_code=400, detail=detail)
+
+
+@router.post("/events/{event_id}/send-reminder")
+def send_event_reminder(event_id: str, current_user: dict = Depends(require_role("admin", "teacher"))):
+    try:
+        return calendar_service.send_event_reminder(event_id, current_user)
+    except ValueError as e:
+        detail = str(e)
+        if "Unauthorized" in detail:
+            raise HTTPException(status_code=403, detail=detail)
+        if "not found" in detail.lower():
+            raise HTTPException(status_code=404, detail=detail)
         raise HTTPException(status_code=400, detail=detail)
