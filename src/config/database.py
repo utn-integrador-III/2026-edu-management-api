@@ -3,6 +3,7 @@ from datetime import datetime
 import logging
 from pymongo import MongoClient
 from bson import ObjectId
+# pyrefly: ignore [missing-import]
 from passlib.context import CryptContext
 from dotenv import load_dotenv
 
@@ -39,6 +40,8 @@ try:
     db.calendar_events.create_index([("active", 1), ("start_date", -1)])
     db.notifications.create_index([("parent_id", 1), ("created_at", -1)])
     db.notifications.create_index([("type", 1), ("created_at", -1)])
+    db.notifications.create_index([("type", 1), ("event_id", 1), ("parent_id", 1)])
+    db.notifications.create_index([("parent_id", 1), ("type", 1), ("read", 1), ("created_at", -1)])
     db.token_blacklist.create_index("token", unique=True)
     db.password_reset_tokens.create_index("token", unique=True)
     logger.info("MongoDB indexes verified/created successfully.")
